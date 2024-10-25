@@ -9,7 +9,7 @@
       "database.password": "dbz",
       "database.server.id": "223344",
       "database.server.name": "testdb",
-      "topic.prefix": "fullfillment" ,
+      "topic.prefix": "fullfillment",
       "database.include.list": "testdb",
       "database.history.kafka.bootstrap.servers": "debezium-mysql-cdc-kafka:9092",
       "database.history.kafka.topic": "schema-changes",

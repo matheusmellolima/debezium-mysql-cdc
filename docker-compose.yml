@@ -12,10 +12,62 @@ services:
     container_name: debezium-mysql-cdc-kafka
     ports:
       - "9092:9092"
+      - "29092:29092"
     environment:
-      - ZOOKEEPER_CONNECT=zookeeper:2181
+      ZOOKEEPER_CONNECT: debezium-mysql-cdc-zookeeper:2181
+      KAFKA_ZOOKEEPER_CONNECT: debezium-mysql-cdc-zookeeper:2181
+      KAFKA_BROKER_ID: 1
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://debezium-mysql-cdc-kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
     depends_on:
       - zookeeper
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:latest
+    container_name: debezium-mysql-cdc-schema-registry
+    hostname: debezium-mysql-cdc-schema-registry
+    depends_on:
+      - kafka
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: debezium-mysql-cdc-schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL: 'debezium-mysql-cdc-zookeeper:2181'
+      SCHEMA_REGISTRY_LISTENERS: http://debezium-mysql-cdc-schema-registry:8081
+      SCHEMA_REGISTRY_DEBUG: 'true'
+
+  ksql-server:
+    image: confluentinc/cp-ksql-server:latest
+    ports:
+      - 8088:8088
+    depends_on:
+      - kafka
+      - zookeeper
+      - schema-registry
+    environment:
+      KSQL_BOOTSTRAP_SERVERS: debezium-mysql-cdc-kafka:9092
+      KSQL_LISTENERS: http://0.0.0.0:8088
+      KSQL_KSQL_SERVICE_ID: debezium-mysql-cdc-ksql-server
+      KSQL_CUB_KAFKA_TIMEOUT: 300
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://debezium-mysql-cdc-schema-registry:8085
+      KSQL_KSQL_COMMIT_INTERVAL_MS: 2000
+      KSQL_KSQL_CACHE_MAX_BYTES_BUFFERING: 10000000
+      KSQL_KSQL_STREAMS_AUTO_OFFSET_RESET: earliest
+
+  
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: debezium-mysql-cdc-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: debezium-mysql-cdc-kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: debezium-mysql-cdc-zookeeper:2181
 
   mysql:
     image: mysql:latest
@@ -27,9 +79,21 @@ services:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_USER: debezium
       MYSQL_PASSWORD: dbz
-      MYSQL_DATABASE: testdb
+      MYSQL_DATABASE: debezium
 
-  connect:
+  # postgres:
+  #   container_name: debezium-mysql-cdc-postgres
+  #   image: postgres
+  #   ports:
+  #     - "5432:5432"
+  #   environment: 
+  #     POSTGRES_DB: "debezium-mysql-cdc"
+  #     POSTGRES_PASSWORD: "password"
+  #     POSTGRES_USER: "postgres"
+  #   volumes:
+  #     - ./.docker/postgres:/var/lib/postgresql
+
+  kconnect:
     image: debezium/connect:latest
     container_name: debezium-mysql-cdc-kafka-connect
     ports:
@@ -39,12 +103,9 @@ services:
       CONFIG_STORAGE_TOPIC: kafka_connect_configs
       OFFSET_STORAGE_TOPIC: kafka_connect_offsets
       STATUS_STORAGE_TOPIC: kafka_connect_statuses
-      BOOTSTRAP_SERVERS: kafka:9092
-      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
-      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
-      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
-      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      BOOTSTRAP_SERVERS: debezium-mysql-cdc-kafka:29092
     depends_on:
       - zookeeper
       - kafka
       - mysql
+      # - postgres
