@@ -1,117 +1,77 @@
 # Change Data Capture (CDC) using Debezium for MySQL
 
-## Kafka commands
+## How to execute this project?
 
-### Create Kafka Topics
+Run `docker compose up -d` to create all services you need. This project uses Docker images from [Debezium tutorial examples](https://github.com/debezium/debezium-examples/tree/main/tutorial).
 
-First, connect to container's bash.
-
+After all containers are running, execute the following HTTP POST request:
 ```
-docker exec -it debezium-mysql-cdc-kafka bash
-```
+POST /connectors HTTP/1.1
+Host: connect.example.com
+Content-Type: application/json
+Accept: application/json
 
-Instead of `localhost`, use the IP you can find by inspecting the container `docker inspect debezium-mysql-cdc-kafka`.
-
-
-```
-bin/kafka-topics.sh --create --topic schema-changes.debezium_demo --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
-```
-
-### Produce and consume messages
-
-Producing
-
-```
-bin/kafka-console-producer.sh --broker-list localhost:9092 --topic test-topic
-```
-
-Consuming
-
-```
-bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic test-topic --from-beginning
-```
-
-## MySQL commands
-
-First, connect to the database through command line
-
-```
-docker exec -it debezium-mysql-cdc-mysql mysql -uroot -p
-```
-
-### Create database
-
-```
-create database debezium_demo;
-```
-
-```
-use debezium_demo;
-```
-
-### Create table
-
-```
-create table user (
-    user_id varchar(50) primary key,
-    first_name varchar(50),
-    last_name varchar(50),
-    city varchar(50),
-    state varchar(50),
-    zipcode varchar(10)
-);
-```
-
-Describe table "user"
-
-```
-desc user;
-```
-
-### Insert rows
-
-Insert a row into "user" table
-
-```
-insert into user values (1, "John", "Doe", "Seattle", "Washington", "98101");
-```
-
-### Select table
-
-Show rows from table
-
-```
-select * from user;
-```
-
-## Debezium
-
-* [Kafka Connect REST Interface for Confluent Platform
-](https://docs.confluent.io/platform/current/connect/references/restapi.html)
-
-### Create connector
-
-Creating connector for debezium-demo database:
-
-```
-curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" http://localhost:8083/connectors/ -d '
 {
-  "name": "debezium-mysql-cdc-connector",  
-  "config": {  
+  "name": "inventory-connector",
+  "config": {
     "connector.class": "io.debezium.connector.mysql.MySqlConnector",
-    "database.hostname": "debezium-mysql-cdc-mysql",  
+    "tasks.max": "1",
+    "database.hostname": "mysql",
     "database.port": "3306",
-    "database.user": "root",
-    "database.password": "password",
-    "database.dbname": "debezium",
-    "database.server.id": "10101",
-    "database.server.name": "debezium",
-    "topic.prefix": "dbz",
-    "table.include.list": "user",
-    "database.history.kafka.bootstrap.servers": "debezium-mysql-cdc-kafka:29092",  
-    "database.history.kafka.topic": "debezium-mysql-cdc-connector-kafka-history"
+    "database.user": "debezium",
+    "database.password": "dbz",
+    "database.server.id": "184054",
+    "topic.prefix": "dbserver1",
+    "database.include.list": "inventory",
+    "schema.history.internal.kafka.bootstrap.servers": "kafka:9092",
+    "schema.history.internal.kafka.topic": "schema-changes.inventory"
+  }
+}
+```
+
+You can copy this CURL command if you want to:
+```
+curl -i -X POST -H "Accept:application/json" -H  "Content-Type:application/json" http://localhost:8083/connectors/ -d '
+{
+  "name": "inventory-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.mysql.MySqlConnector",
+    "tasks.max": "1",
+    "database.hostname": "mysql",
+    "database.port": "3306",
+    "database.user": "debezium",
+    "database.password": "dbz",
+    "database.server.id": "184054",
+    "topic.prefix": "dbserver1",
+    "database.include.list": "inventory",
+    "schema.history.internal.kafka.bootstrap.servers": "kafka:9092",
+    "schema.history.internal.kafka.topic": "schema-changes.inventory"
   }
 }'
+```
+
+This will create the Debezium MySQL Connector and configure the topics Debezium will send updates to.
+
+Run the Python Script `python producer.py` to execute inserts in the Database. This script will create 100 new records in the `user` table. 
+
+Then go to the page `http://localhost:8080`, that's a UI for Kafka in which you can check the topics and their messages. There should be 7 topics with the prefix `dbserver1.inventory`, one for each table in the database. There should be new messages every time something changes in the database.
+
+You can also consume Kafka from your console by executing the command:
+```
+docker compose exec kafka /kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:9092 --from-beginning --property print.key=true --topic dbserver1.inventory.user
+```
+
+## Few helpful commands to debug this project
+
+### Creating a Debezium Connector
+
+Debezium is configured by using the [Kafka Connect REST API Interface for Confluent Platform
+](https://docs.confluent.io/platform/current/connect/references/restapi.html). So you need to send HTTP requests for everything.
+
+Creating connector for MySQL database by replacing the @register-mysql-connector.json with the JSON content in between quotes '{}':
+
+```
+curl -i -X POST -H "Accept:application/json" -H  "Content-Type:application/json" http://localhost:8083/connectors/ -d @register-mysql-connector.json
 ```
 
 ``"name"`` -> Name of the connector. It should be unique in the Kafka Connect cluster.
@@ -133,40 +93,25 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
 * `io.debezium.relational.history.FileDatabaseHistory` (along with debezium.source.database.history.file.filename property);
 * ``io.debezium.relational.history.MemoryDatabaseHistory`` for test environments.
 
-### Update connector config
+### Updating a Debezium Connector config
 
 ```
-curl -i -X PUT -H "Accept:application/json" -H "Content-Type:application/json" localhost:8083/connectors/debezium-mysql-cdc-connector/config -d '
-{
-  "connector.class": "io.debezium.connector.mysql.MySqlConnector",
-  "tasks.max": "1",  
-  "database.hostname": "debezium-mysql-cdc-mysql",  
-  "database.port": "3306",
-  "database.user": "root",
-  "database.password": "password",
-  "database.server.id": "10101",  
-  "database.server.name": "debezium-demo",
-  "topic.prefix": "dbz",
-  "database.include.list": "debezium",  
-  "database.history.kafka.bootstrap.servers": "debezium-mysql-cdc-kafka:9092",  
-  "database.history.kafka.topic": "test-topic",
-  "debezium.source.database.history": "io.debezium.relational.history.MemoryDatabaseHistory"
-}'
+curl -i -X PUT -H "Accept:application/json" -H "Content-Type:application/json" localhost:8083/connectors/debezium-mysql-cdc-connector/config -d @register-mysql-connector.json
 ```
 
-### Delete connectors
+### Deleting Debeziumn Connectors
 
 ```
 curl -i -X DELETE localhost:8083/connectors/debezium-mysql-cdc-connector/
 ```
 
-### Restart connector
+### Restarting a connector
 
 ```
 curl -i -X POST http://localhost:8083/connectors/debezium-mysql-cdc-connector/restart
 ```
 
-### Checking the connectors
+### Checking connectors' health
 
 ```
 curl -XGET http://localhost:8083/connectors
@@ -184,3 +129,66 @@ To get metadata of each of the connectors such as the configuration, task inform
 curl -XGET http://localhost:8083/connectors?expand=info
 ```
 
+### Enabling Binary Logs for MySQL
+
+First, connect to the database using the following command (this command will ask for the database ROOT password, which you can take a look at the Docker Compose):
+
+```
+docker compose exec -it mysql mysql -uroot -p
+```
+
+By using this interface, you can run SQL commands into your MySQL database.
+
+There are a few ways to check if binary logs are available depending on your version of MySQL database:
+
+1: 
+```
+SELECT variable_value as "BINARY LOGGING STATUS (log-bin) ::"
+FROM information_schema.global_variables WHERE variable_name='log_bin';
+```
+
+2:
+```
+SELECT variable_value as "BINARY LOGGING STATUS (log-bin) ::"
+FROM performance_schema.global_variables WHERE variable_name='log_bin';
+```
+
+3: 
+```
+show binary logs;
+```
+
+If binary logs are not ON, run the following commands:
+```
+docker compose exec -it mysql /bin/bash
+yum install vim
+vim etc/my.cnf
+```
+
+Remove the line `# log_bin` and add the following lines in the same place:
+```
+server-id         = 223344
+log_bin           = mysql-bin
+binlog_format     = ROW
+binlog_row_image  = FULL
+```
+
+Now, let's go into details:
+
+``server-id`` -> it's unique for each server and replication client in the MySQL cluster.
+
+``log_bin`` -> it's the base name of the sequence of binlog files.
+
+``binlog_format`` -> must be set to ROW or row.
+
+``binlog_row_image`` -> must be set to FULL or full.
+
+After setting up Binary Logs, restart the MySQL server with the command.
+
+```
+docker compose restart mysql
+```
+
+### Kafka commands
+
+Debezium creates all topics needed and it's a self-service platform that can handle its self configuration, but if you want to configure Kafka yourself, you can use the UI under `http://localhost:8080`.

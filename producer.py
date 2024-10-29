@@ -1,6 +1,7 @@
 """Producer for Debezium MySQL connector."""
 import logging
 import uuid
+import sqlalchemy
 from sqlalchemy import create_engine, String, text
 from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase, mapped_column
 from faker import Faker
@@ -25,7 +26,7 @@ def get_logger():
 log = get_logger()
 
 engine = create_engine(
-    "mysql+pymysql://debezium:dbz@localhost:3306/debezium",
+    "mysql+pymysql://mysqluser:mysqlpw@localhost:3306/inventory",
     logging_name="debezium-mysql-cdc.producer")
 
 _SessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -65,8 +66,8 @@ class User(Base):
 
 def session_factory():
     """Create session factory."""
-    User.metadata.drop_all(engine)
-    User.metadata.create_all(engine)
+    if not sqlalchemy.inspect(engine).has_table("user"):
+        User.metadata.create_all(engine)
     return _SessionFactory()
 
 
