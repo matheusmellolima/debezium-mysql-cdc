@@ -58,7 +58,7 @@ This will create the Debezium MySQL Connector and configure the topics Debezium 
 
 you can't use one `include` config with a `exclude` config, and vice versa.
 
-Now that Debezium is set, run the Python Script `python producer.py` to execute inserts in the Database. This script will create 100 new records in the `user` table. 
+Now that Debezium is set, run the Python Script `python producer.py` to execute inserts in the Database. This script will create 100 new records in the `user` table. You don't need to worry about creating the table, the script will do it. 
 
 Then go to the page `http://localhost:8080`, that's a UI for Kafka in which you can check the topics and their messages. There should be 7 topics with the prefix `dbserver1.inventory`, one for each table in the database. There should be new messages every time something changes in the database.
 
