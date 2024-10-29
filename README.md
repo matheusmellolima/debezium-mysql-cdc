@@ -50,9 +50,15 @@ curl -i -X POST -H "Accept:application/json" -H  "Content-Type:application/json"
 }'
 ```
 
-This will create the Debezium MySQL Connector and configure the topics Debezium will send updates to.
+This will create the Debezium MySQL Connector and configure the topics Debezium will send updates to. With this particular configuration all tables in the database list `database.include.list` is set to be included. But you can set specifically what you want to include by using:
+* `"table.include.list": "inventory.user, inventory.customers"`
+* `table.exclude.list`
+* `column.include.list`
+* `column.exclude.list`
 
-Run the Python Script `python producer.py` to execute inserts in the Database. This script will create 100 new records in the `user` table. 
+you can't use one `include` config with a `exclude` config, and vice versa.
+
+Now that Debezium is set, run the Python Script `python producer.py` to execute inserts in the Database. This script will create 100 new records in the `user` table. 
 
 Then go to the page `http://localhost:8080`, that's a UI for Kafka in which you can check the topics and their messages. There should be 7 topics with the prefix `dbserver1.inventory`, one for each table in the database. There should be new messages every time something changes in the database.
 
